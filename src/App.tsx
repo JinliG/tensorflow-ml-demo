@@ -34,9 +34,19 @@ function App() {
   // 2. 初始化模型
   const createModel = () => {
     const model = tf.sequential();
-    model.add(tf.layers.dense({ inputShape: [1], units: 1, useBias: true }));
-    model.add(tf.layers.dense({ units: 1 }));
+    /**
+     *  神经网络的核心组成部分是层，这是数据处理模块，你可以把它看作是一个从张量到张量的可调函数。
+     *  dense 是一种层，可将输入与矩阵（称为“权重”）相乘，并向结果添加一个数字（称为“偏差”）。
+     *  由于这是网络的第一层，因此我们需要定义 inputShape。inputShape 是 [1]，因为我们将 1 数字用作输入（训练数据中的 horsepower）。
+     *  units 用于设置权重矩阵在层中的大小。将其设置为 1 即表示数据的每个输入特征的权重为 1。
+     */
+    // 第一层隐藏层
+    model.add(tf.layers.dense({ inputShape: [1], units: 1 }));
+    // 在第一隐藏层和最终输出层之间添加更多的隐藏层
+    model.add(tf.layers.dense({ units: 50, activation: 'sigmoid' }));
 
+    // 输出层
+    model.add(tf.layers.dense({ units: 1 }));
     tfvis.show.modelSummary({ name: '模型概要' }, model);
 
     return model;
@@ -107,12 +117,17 @@ function App() {
     });
 
     // 定义 batchSize 和多少个周期
+    /**
+     * batchSize 是指模型在每次训练迭代时会看到的数据子集的大小。常见的批次大小通常介于 32-512 之间。对于所有问题，实际上并没有理想的批次大小。
+     * epochs 表示模型查看您提供的整个数据集的次数。我们将对数据集执行 50 次迭代。
+     */
     const batchSize = 32;
-    const epochs = 50;
+    const epochs = 100;
 
     // 启动训练循环
     /**
-     * 
+     * 是您为了启动训练循环而调用的函数。
+     * 为了监控训练进度，我们会将一些回调传递给 model.fit。使用 tfvis.show.fitCallbacks 来生成可为之前指定的“损失”和“均方误差'”指标绘制图表的函数。
      */
     return await model.fit(inputs, labels, {
       batchSize,
@@ -126,11 +141,17 @@ function App() {
   const testModel = (model: tf.Sequential, normalizationData: any) => {
     const { inputMax, inputMin, labelMin, labelMax } = normalizationData;
 
-    // 依据归一化后的数据，反归一化生成测试数据
     const [xs, preds] = tf.tidy(() => {
       const xs = tf.linspace(0, 1, 100);
+      /**
+       * 生成了 100 个新 “样本”，以提供给模型。
+       * Model.predict 是我们将这些样本提供给模型的方式。
+       * 请注意，它们必须具有与训练时相似的形状 ([num_examples, num_features_per_example])。
+       */
       const preds = model.predict(xs.reshape([100, 1])) as any;
+      preds.print();
 
+      // 做归一化时的逆运算
       const unNormXs = xs
         .mul(inputMax.sub(inputMin))
         .add(inputMin);
@@ -139,7 +160,10 @@ function App() {
         .mul(labelMax.sub(labelMin))
         .add(labelMin);
 
-      // Un-normalize the data
+      /**
+       * .dataSync() 是一种用于获取张量中存储的值的 typedarray 的方法，是通常首选的 .data() 方法的同步版本
+       * 这使我们能够在常规 JavaScript 中处理这些值。
+       */
       return [unNormXs.dataSync(), unNormPreds.dataSync()];
     });
 
